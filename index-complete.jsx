@@ -1,82 +1,72 @@
 import React from "react";
 import Head from "next/head";
 import styles from "@/styles/Home.module.css";
-import { Chatbot } from "popcat-chatbot";
+import { useState } from "react";
+import { useRef } from "react";
+import { useEffect } from "react";
 
-class Answers extends React.Component {
-  render() {
-    const { answers } = this.props;
-    var answerDivs = answers.map((elem, i) => (
-      <div key={"div-root" + i}>
-        <p key={"question" + i}>{elem.question}</p>
-        <p key={"answer" + i}>{elem.answer}</p>
-      </div>
-    ));
-    return <>{answerDivs}</>;
-  }
+import { retext } from "retext";
+import retextPos from "retext-pos";
+import retextKeywords from "retext-keywords";
+import { toString } from "nlcst-to-string";
+
+const KEYWORDS_DATA = "keywords_data";
+
+async function extractKeywords(text) {
+  let keywords = [];
+  let toProcess = await retext()
+    .use(retextPos)
+    .use(retextKeywords)
+    .process(text);
+
+  toProcess.data.keywords.forEach((kw) => {
+    keywords.push(toString(kw.matches[0].node));
+  });
+  return keywords;
 }
 
-export default class Home extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      answers: [],
-      question: "",
-    };
+function Posts({ data }) {
+  return (
+    <div className={styles.data_container}>
+      {data.map((elem, i) => (
+        <div key={i + "root-div"} className={styles.data_item}>
+          <p>{elem.text}</p>
+          <div>{elem.keywords}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-    this.bot = new Chatbot()
-      .setName("Big Bot")
-      .setGender("Male")
-      .setOwner("EEF");
+export default function Home() {
+  const inputRef = useRef();
+  const [data, setData] = useState([]);
 
-    this.handleSubmit = this.handleSubmit.bind(this);
-  }
+  // saves data to localstorage
+  useEffect(() => {
+    if (data.length !== 0) {
+      localStorage.setItem(KEYWORDS_DATA, JSON.stringify(data));
+    }
+  }, [data]);
 
-  handleSubmit(ev) {
-    ev.preventDefault();
-    this.setState({ question: ev.target.value });
-  }
+  useEffect(() => {
+    setData(JSON.parse(localStorage.getItem(KEYWORDS_DATA)) || []);
+  }, []);
 
-  addAnswer = (question, answer) => {
-    let now = Date.now();
-    this.bot.chat(question).then((answr) => {
-      let updatedAnswers = [
-        ...this.state.answers,
-        { question: question, answer: answr, timestamp: now },
-      ];
-      updatedAnswers = updatedAnswers.sort((a, b) => b.timestamp - a.timestamp);
-      this.setState((state) => ({
-        answers: updatedAnswers,
-      }));
-      localStorage.setItem("answers", JSON.stringify(updatedAnswers));
-    });
+  const inputHandler = async (ev) => {
+    let v = inputRef.current.value;
+    let toSave = { text: v, keywords: [], timestamp: Date.now() };
+    toSave.keywords = await extractKeywords(v);
+    setData([toSave, ...data]);
   };
 
-  componentDidMount() {
-    const answers = JSON.parse(localStorage.getItem("answers"));
-    if (answers) {
-      this.setState({ answers: answers });
-    }
-  }
-
-  render() {
-    const { answers } = this.state;
-    return (
-      <>
-        <main>
-          <input
-            placeholder="What do you want to ask?"
-            value={this.state.question}
-            onChange={this.handleSubmit}
-          ></input>
-          <button
-            onClick={() => this.addAnswer(this.state.question, "sdgsrgrs")}
-          >
-            Send
-          </button>
-          <Answers answers={answers}></Answers>
-        </main>
-      </>
-    );
-  }
+  return (
+    <div className={styles.main}>
+      <div className={styles.main_content}>
+        <textarea placeholder="Input text here." ref={inputRef}></textarea>
+        <button onClick={inputHandler}>Save</button>
+        <Posts data={data}></Posts>
+      </div>
+    </div>
+  );
 }
